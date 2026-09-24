@@ -1,0 +1,8 @@
+.DS_Store
+build*/
+out/
+*.wav
+.vs/
+.vscode/
+.idea/
+CMakeUserPresets.json

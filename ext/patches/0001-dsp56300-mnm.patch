@@ -1,0 +1,468 @@
+diff --git a/source/dsp56kEmu/dsp_ops.inl b/source/dsp56kEmu/dsp_ops.inl
+index 566ff16..7e0debe 100644
+--- a/source/dsp56kEmu/dsp_ops.inl
++++ b/source/dsp56kEmu/dsp_ops.inl
+@@ -427,7 +427,8 @@ namespace dsp56k
+ 
+ 	inline void DSP::op_Pflush(const TWord op)
+ 	{
+-		errNotImplemented("PFLUSH");		
++		// MNM patch: flush whole cache (emulator has no locked sectors, same as pflushun)
++		cache.pflushun();
+ 	}
+ 	inline void DSP::op_Pflushun(const TWord op)
+ 	{
+diff --git a/source/dsp56kEmu/dsp_ops_alu.inl b/source/dsp56kEmu/dsp_ops_alu.inl
+index 386e30f..9fd92c5 100644
+--- a/source/dsp56kEmu/dsp_ops_alu.inl
++++ b/source/dsp56kEmu/dsp_ops_alu.inl
+@@ -72,6 +72,7 @@ namespace dsp56k
+ 
+ 		d.var = res;
+ 		d.doMasking();
++		limit_arithmeticSaturation(d);   // MNM patch: SM (arithmetic saturation mode)
+ 
+ 		const auto carry = int(res > g_alu_max_56_u);
+ 
+@@ -146,6 +147,7 @@ namespace dsp56k
+ 
+ 		d.var = res;
+ 		d.doMasking();
++		limit_arithmeticSaturation(d);   // MNM patch: SM (arithmetic saturation mode)
+ 
+ 		// S L E U N Z V C
+ 		sr_toggle(CCR_C, carry);
+@@ -271,6 +273,7 @@ namespace dsp56k
+ 		const TInt64 res = (d.signextend<TInt64>() << 1) + s.signextend<TInt64>();
+ 		d.var = res;
+ 		d.doMasking();
++		limit_arithmeticSaturation(d);   // MNM patch: SM (arithmetic saturation mode)
+ 
+ 		sr_z_update(d);
+ 		sr_clear(CCR_V);		// I did not manage to make the ALU overflow in the simulator, apparently that SR bit is only used for other ops
+@@ -293,6 +296,7 @@ namespace dsp56k
+ 
+ 		d.var = res;
+ 		d.doMasking();
++		limit_arithmeticSaturation(d);   // MNM patch: SM (arithmetic saturation mode)
+ 
+ 		sr_z_update(d);
+ 		sr_v_update(res, d);
+@@ -368,6 +372,7 @@ namespace dsp56k
+ 			res += d.signextend<int64_t>();
+ 
+ 		d.var = res & 0x00ffffffffffffff;
++		limit_arithmeticSaturation(d);   // MNM patch: SM (arithmetic saturation mode)
+ 
+ 		// Update SR
+ 		sr_z_update(d);
+@@ -411,6 +416,7 @@ namespace dsp56k
+ 
+ 		d.var = res;
+ 		d.doMasking();
++		limit_arithmeticSaturation(d);   // MNM patch: SM (arithmetic saturation mode)
+ 
+ 		// Update SR
+ 		sr_z_update( d );
+@@ -489,6 +495,7 @@ namespace dsp56k
+ 		d.var = res;
+ 
+ 		d.doMasking();
++		limit_arithmeticSaturation(d);   // MNM patch: SM (arithmetic saturation mode)
+ 
+ 		// Update SR
+ 		sr_z_update( d );
+@@ -786,6 +793,7 @@ namespace dsp56k
+ 		const auto res = --d.var;
+ 
+ 		d.doMasking();
++		limit_arithmeticSaturation(d);   // MNM patch: SM (arithmetic saturation mode)
+ 
+ 		sr_z_update(d);
+ 		sr_v_update(res,d);
+@@ -913,6 +921,7 @@ namespace dsp56k
+ 		const auto res = ++d.var;
+ 
+ 		d.doMasking();
++		limit_arithmeticSaturation(d);   // MNM patch: SM (arithmetic saturation mode)
+ 
+ 		sr_z_update(d);
+ 		sr_v_update(res,d);
+@@ -1160,7 +1169,17 @@ namespace dsp56k
+ 	}
+ 	inline void DSP::op_Mpyri(const TWord op)
+ 	{
+-		errNotImplemented("MPYRI");
++		// MNM patch: MPYRI (+/-)#xxxx,S,D = MPYI followed by RND
++		const bool	ab		= getFieldValue<Mpyri,Field_d>(op);
++		const bool	negate	= getFieldValue<Mpyri,Field_k>(op);
++		const TWord qq		= getFieldValue<Mpyri,Field_qq>(op);
++
++		const TReg24 s		= TReg24(immediateDataExt<Mpyri>());
++
++		const TReg24 reg	= decode_qq_read(qq);
++
++		alu_mpy( ab, reg, s, negate, false );
++		alu_rnd( ab );
+ 	}
+ 	inline void DSP::op_Neg(const TWord op)
+ 	{
+@@ -1275,6 +1294,7 @@ namespace dsp56k
+ 		const TInt64 res = (d.signextend<TInt64>() << 1) - s.signextend<TInt64>();
+ 		d.var = res;
+ 		d.doMasking();
++		limit_arithmeticSaturation(d);   // MNM patch: SM (arithmetic saturation mode)
+ 		// Carry bit note: "The Carry bit (C) is set correctly if the source operand does not overflow as a result of the left shift operation.", we do not care at the moment
+ 		sr_toggle(CCR_V, bittest(old, 55) != bittest(d, 55));
+ 		sr_z_update(d);
+@@ -1293,6 +1313,7 @@ namespace dsp56k
+ 		const TInt64 res = (d.signextend<TInt64>() >> 1) - s.signextend<TInt64>();
+ 		d.var = res;
+ 		d.doMasking();
++		limit_arithmeticSaturation(d);   // MNM patch: SM (arithmetic saturation mode)
+ 		sr_z_update(d);
+ 		//sr_l_update_by_v();
+ 		sr_c_update_arithmetic(old, d);
+diff --git a/source/dsp56kEmu/jit.cpp b/source/dsp56kEmu/jit.cpp
+index c885490..f9b0d79 100644
+--- a/source/dsp56kEmu/jit.cpp
++++ b/source/dsp56kEmu/jit.cpp
+@@ -269,6 +269,7 @@ namespace dsp56k
+ 
+ 	void Jit::resetHW()
+ 	{
++		m_failed = false; m_failReason.clear();   // MNM patch: a reset retries the JIT (the shortage may have passed)
+ 		checkModeChange();
+ 	}
+ 
+diff --git a/source/dsp56kEmu/jit.h b/source/dsp56kEmu/jit.h
+index 0752c28..fad1c55 100644
+--- a/source/dsp56kEmu/jit.h
++++ b/source/dsp56kEmu/jit.h
+@@ -74,6 +74,13 @@ namespace dsp56k
+ 			return m_volatileP.find(_pc) != m_volatileP.end();
+ 		}
+ 
++		// MNM patch: a block that could not be generated (code generation or the JIT runtime's add() failed, e.g. no
++		// JIT memory) is a sticky failure the host must check after exec(): the DSP makes no progress at that pc
++		// (create() returns instead of re-entering itself through the stub, which recursed without bound before).
++		bool hasFailed() const { return m_failed; }
++		const std::string& failReason() const { return m_failReason; }
++		void setFailure(const std::string& _reason) { if(!m_failed) { m_failed = true; m_failReason = _reason; } }
++
+ 		void create(TWord _pc, bool _execute);
+ 		void recreate(TWord _pc);
+ 
+@@ -132,5 +139,7 @@ namespace dsp56k
+ 		// the following data is accessed by JIT code at runtime, it NEEDS to be put last into this struct to be
+ 		// able to use ARM relative addressing, see member ordering in dsp.h
+ 		JitRuntimeData m_runtimeData;
++		bool m_failed = false;   // MNM patch
++		std::string m_failReason;
+ 	};
+ }
+diff --git a/source/dsp56kEmu/jitblock.cpp b/source/dsp56kEmu/jitblock.cpp
+index ff2af91..a16f69e 100644
+--- a/source/dsp56kEmu/jitblock.cpp
++++ b/source/dsp56kEmu/jitblock.cpp
+@@ -1,3 +1,4 @@
++#include <cstdio>
+ #include "dsp.h"
+ #include "interrupts.h"
+ #include "jitemitter.h"
+@@ -31,7 +32,7 @@ namespace dsp56k
+ 	{
+ 		const auto& opcodes = _dsp.opcodes();
+ 
+-		const bool isFastInterrupt = _pc < Vba_End;
++		const bool isFastInterrupt = _pc < Vba_End && !(_config.interruptRegionIsCode && _dsp.getProcessingMode() != DSP::FastInterrupt);   // MNM patch
+ 
+ 		const TWord pcMax = isFastInterrupt ? (_pc + 2) : _dsp.memory().sizeP();
+ 
+@@ -236,7 +237,7 @@ namespace dsp56k
+ 
+ 		m_chain = _chain;
+ 
+-		const bool isFastInterrupt = _pc < Vba_End;
++		const bool isFastInterrupt = _pc < Vba_End && !(m_config.interruptRegionIsCode && m_dsp.getProcessingMode() != DSP::FastInterrupt);   // MNM patch
+ 		const auto fastInterruptMode = isFastInterrupt ? (m_config.dynamicFastInterrupts ? JitOps::FastInterruptMode::Dynamic : JitOps::FastInterruptMode::Static) : JitOps::FastInterruptMode::None;
+ 
+ 		dspAsm.clear();
+diff --git a/source/dsp56kEmu/jitblockchain.cpp b/source/dsp56kEmu/jitblockchain.cpp
+index 5089152..031b754 100644
+--- a/source/dsp56kEmu/jitblockchain.cpp
++++ b/source/dsp56kEmu/jitblockchain.cpp
+@@ -1,4 +1,6 @@
+ #include "jitblockchain.h"
++#include <cstdio>
++#include <cstdlib>
+ 
+ #include "dsp.h"
+ #include "jitasmjithelpers.h"
+@@ -156,7 +158,10 @@ namespace dsp56k
+ 			}
+ 		}
+ 
+-		emit(_pc);
++		// MNM patch: a failed emit leaves the create stub installed for _pc; exec() would re-enter it (unbounded
++		// recursion). Return instead: the failure is sticky (Jit::hasFailed) and the host stops the DSP.
++		if(!emit(_pc))
++			return;
+ 		if(_execute)
+ 			exec(_pc);
+ 	}
+@@ -361,11 +366,21 @@ namespace dsp56k
+ 
+ 		m_generatingBlocks.insert(std::make_pair(_pc, b));
+ 
++		// MNM patch: a block occupies its area as soon as it links a child (getChildBlock), so a failed emit has to
++		// take it out of the cache again; otherwise later parents link to a block without code (a jump to null).
++		auto discard = [&](JitBlockRuntimeData* _b)
++		{
++			if(_b->getPMemSize() > 0 && _b->getPCFirst() < m_jitCache.size() && m_jitCache[_b->getPCFirst()].block == _b)
++				unoccupyArea(_b);
++			m_jit.releaseBlockRuntimeData(_b);
++		};
++
+ 		if(!emitter->block.emit(*b, this, _pc, m_jitCache, m_jit.getVolatileP(), m_jit.getLoops(), m_jit.getLoopEnds(), m_jit.getProfilingSupport()))
+ 		{
+ 			LOG("FATAL: code generation failed for PC " << HEX(_pc));
+-			m_jit.releaseBlockRuntimeData(b);
++			m_jit.setFailure("code generation failed at P:$" + std::to_string(_pc));   // MNM patch
+ 			m_generatingBlocks.erase(_pc);
++			discard(b);   // MNM patch (was: releaseBlockRuntimeData only)
+ 			m_jit.releaseEmitter(emitter);
+ 			return nullptr;
+ 		}
+@@ -382,12 +397,23 @@ namespace dsp56k
+ 
+ 		TJitFunc func;
+ 
+-		const auto err = m_jit.getRuntime()->add(&func, &emitter->codeHolder);
++		auto err = m_jit.getRuntime()->add(&func, &emitter->codeHolder);
++
++		// MNM patch: simulate a JIT runtime failure on the n-th block (tests the failure path)
++		if(static const char* failAt = std::getenv("MNM_JIT_FAIL_AT"); failAt && ++m_mnmEmitCount == std::atoi(failAt))
++		{
++			m_jit.getRuntime()->release(func);
++			err = asmjit::DebugUtils::errored(asmjit::kErrorOutOfMemory);
++		}
+ 
+ 		if(err)
+ 		{
+ 			const auto* const errString = asmjit::DebugUtils::errorAsString(err);
+ 			LOG("JIT failed: " << err << " - " << errString << "PC " << HEX(_pc));
++			char reason[128];
++			snprintf(reason, sizeof reason, "JIT runtime: %s (asmjit error %u) at P:$%06X", errString, unsigned(err), unsigned(_pc));
++			m_jit.setFailure(reason);   // MNM patch
++			discard(b);                 // MNM patch (the block was leaked here, still in the cache once it had linked a child)
+ 			m_jit.releaseEmitter(emitter);
+ 			return nullptr;
+ 		}
+diff --git a/source/dsp56kEmu/jitblockchain.h b/source/dsp56kEmu/jitblockchain.h
+index fd75014..3dc842a 100644
+--- a/source/dsp56kEmu/jitblockchain.h
++++ b/source/dsp56kEmu/jitblockchain.h
+@@ -119,5 +119,6 @@ namespace dsp56k
+ 		std::unique_ptr<AsmJitErrorHandler> m_errorHandler;
+ 
+ 		size_t m_codeSize = 0;
++		int m_mnmEmitCount = 0;   // MNM patch: MNM_JIT_FAIL_AT
+ 	};
+ }
+diff --git a/source/dsp56kEmu/jitconfig.h b/source/dsp56kEmu/jitconfig.h
+index ed83621..ad4999a 100644
+--- a/source/dsp56kEmu/jitconfig.h
++++ b/source/dsp56kEmu/jitconfig.h
+@@ -29,6 +29,11 @@ namespace dsp56k
+ 		// needs to be true if there is code that executes code in interrupt regions as regular jumps
+ 		bool dynamicFastInterrupts = false;
+ 
++		// MNM patch: treat the interrupt vector region (P:$0..$FF) as ordinary code unless the DSP is
++		// currently executing a fast interrupt. For firmware that places regular code below $100
++		// and never takes interrupts there (Elektron Monomachine kernel).
++		bool interruptRegionIsCode = false;
++
+ 		// asmjit can validate the generate code, usually not needed
+ 		bool asmjitDiagnostics = false;
+ 
+diff --git a/source/dsp56kEmu/jitops.h b/source/dsp56kEmu/jitops.h
+index 0be2c03..e8a44fb 100644
+--- a/source/dsp56kEmu/jitops.h
++++ b/source/dsp56kEmu/jitops.h
+@@ -240,7 +240,7 @@ namespace dsp56k
+ 		template<Instruction Inst, bool Accumulate> void op_Mpy_su(TWord op);
+ 		void op_Mpyi(TWord op);
+ 		void op_Mpyr_S1S2D(TWord op)			{ alu_multiply(op); }
+-		void op_Mpyri(TWord op)					{ errNotImplemented(op); }
++		void op_Mpyri(TWord op);
+ 		void op_Neg(TWord op);
+ 		void op_Nop(TWord op);
+ 		void op_Norm(TWord op)					{ errNotImplemented(op); }
+@@ -250,7 +250,7 @@ namespace dsp56k
+ 		void op_Or_xx(TWord op);
+ 		void op_Or_xxxx(TWord op);
+ 		void op_Ori(TWord op);
+-		void op_Pflush(TWord op)				{ errNotImplemented(op); }
++		void op_Pflush(TWord op)				{ op_Pflushun(op); }
+ 		void op_Pflushun(TWord op);
+ 		void op_Pfree(TWord op);
+ 		void op_Plock(TWord op);
+@@ -586,6 +586,7 @@ namespace dsp56k
+ 		void alu_mpy(TWord ab, DspValue& _s1, DspValue& _s2, bool _negate, bool _accumulate, bool _s1Unsigned, bool _s2Unsigned, bool _round);
+ 		void alu_multiply(TWord op);
+ 		void alu_or(TWord ab, DspValue& _v);
++		void alu_saturateSM(const JitRegGP& _alu);   // MNM patch: SR.SM arithmetic saturation to 48 bits
+ 		void alu_rnd(TWord ab);
+ 		void alu_rnd(TWord ab, const JitReg64& d, bool _needsSignextend = true);
+ 		void alu_insert(TWord ab, const DspValue& _src, DspValue& _widthOffset);
+diff --git a/source/dsp56kEmu/jitops_alu.cpp b/source/dsp56kEmu/jitops_alu.cpp
+index f9f8180..31f865d 100644
+--- a/source/dsp56kEmu/jitops_alu.cpp
++++ b/source/dsp56kEmu/jitops_alu.cpp
+@@ -49,6 +49,7 @@ namespace dsp56k
+ 		}
+ 
+ 		m_dspRegs.mask56(alu);
++		alu_saturateSM(alu);   // MNM patch
+ 
+ 		if(!m_disableCCRUpdates)
+ 			ccr_dirty(_ab, alu, static_cast<CCRMask>(CCR_E | CCR_N | CCR_U | CCR_Z));
+@@ -77,6 +78,7 @@ namespace dsp56k
+ 		}
+ 
+ 		m_dspRegs.mask56(alu);
++		alu_saturateSM(alu);   // MNM patch
+ 
+ 		if(!m_disableCCRUpdates)
+ 			ccr_dirty(_ab, alu, static_cast<CCRMask>(CCR_E | CCR_N | CCR_U | CCR_Z));
+@@ -385,6 +387,16 @@ namespace dsp56k
+ 
+ 		AluRef d(m_block, ab, _accumulate, true);
+ 
++		// MNM patch: a 24-bit immediate operand (mpyi/maci/mpyri/macri) is signed; materialize it
++		// sign-extended to the full register so that the signed multiply below sees the right value
++		// (aarch64 multiplies the 32-bit halves, x64 the 64-bit registers: a 32-bit move would zero-extend there).
++		if (_s2.isImmediate() && !_s2Unsigned && (_s2.imm24() & 0x800000))
++		{
++			const int32_t sv = static_cast<int32_t>(_s2.imm24() << 8) >> 8;
++			_s2.temp(DspValue::Temp24);
++			m_asm.mov(r64(_s2), asmjit::Imm(static_cast<int64_t>(sv)));
++		}
++
+ #ifdef HAVE_ARM64
+ 		if (_negate)
+ 		{
+@@ -496,6 +508,7 @@ namespace dsp56k
+ 
+ 			if (canOverflow || _negate)
+ 				m_dspRegs.mask56(d);
++			alu_saturateSM(d);   // MNM patch
+ 		}
+ 		else
+ 		{
+@@ -999,6 +1012,22 @@ namespace dsp56k
+ 		alu_mpy(ab, reg, s, negate, false, false, false, false);
+ 	}
+ 
++	void JitOps::op_Mpyri(TWord op)
++	{
++		// MNM patch: MPYRI = MPYI + RND
++		const bool	ab = getFieldValue<Mpyri, Field_d>(op);
++		const bool	negate = getFieldValue<Mpyri, Field_k>(op);
++		const TWord qq = getFieldValue<Mpyri, Field_qq>(op);
++
++		DspValue s(m_block);
++		getOpWordB(s);
++
++		DspValue reg(m_block);
++		decode_qq_read(reg, qq, true);
++
++		alu_mpy(ab, reg, s, negate, false, false, false, true);
++	}
++
+ 	void JitOps::op_Maci_xxxx(TWord op)
+ 	{
+ 		const bool	ab = getFieldValue<Maci_xxxx, Field_d>(op);
+diff --git a/source/dsp56kEmu/jitops_alu_aarch64.cpp b/source/dsp56kEmu/jitops_alu_aarch64.cpp
+index fa8c64e..4d2e986 100644
+--- a/source/dsp56kEmu/jitops_alu_aarch64.cpp
++++ b/source/dsp56kEmu/jitops_alu_aarch64.cpp
+@@ -641,6 +641,32 @@ namespace dsp56k
+ 
+ 		m_dspRegs.mask56(d);
+ 	}
++	// MNM patch: DSP56300 arithmetic saturation mode (SR bit SM): after a data-ALU operation the 56-bit
++	// result is limited to the 48-bit range when bits 55, 48 and 47 are not all equal.
++	void JitOps::alu_saturateSM(const JitRegGP& _alu)
++	{
++		const JitDspMode* mode = m_block.getMode();
++		if(mode && !mode->testSR(SRB_SM))
++			return;
++
++		const auto skip = m_asm.newLabel();
++		if(!mode)
++			m_asm.tbz(m_dspRegs.getSR(JitDspRegs::Read), asmjit::Imm(SRB_SM), skip);
++
++		const auto d = r64(_alu);
++		const RegGP t(m_block);
++		const RegGP t2(m_block);
++		m_asm.sbfx(r64(t), d, asmjit::Imm(0), asmjit::Imm(56));   // sign-extend 56 -> 64
++		m_asm.asr(r64(t2), r64(t), asmjit::Imm(47));              // 0 or -1 when within 48-bit range
++		m_asm.add(r64(t2), r64(t2), asmjit::Imm(1));
++		m_asm.cmp(r64(t2), asmjit::Imm(1));
++		m_asm.b_ls(skip);
++		m_asm.mov(r64(t2), asmjit::Imm(0x007fffffffffffULL));
++		m_asm.mov(d, asmjit::Imm(0xff800000000000ULL));
++		m_asm.cmp(r64(t), asmjit::Imm(0));
++		m_asm.csel(d, r64(t2), d, asmjit::arm::CondCode::kGE);
++		m_asm.bind(skip);
++	}
+ }
+ 
+ #endif
+diff --git a/source/dsp56kEmu/jitops_alu_x64.cpp b/source/dsp56kEmu/jitops_alu_x64.cpp
+index 293486a..74c7208 100644
+--- a/source/dsp56kEmu/jitops_alu_x64.cpp
++++ b/source/dsp56kEmu/jitops_alu_x64.cpp
+@@ -665,6 +665,40 @@ namespace dsp56k
+ 
+ 		m_dspRegs.mask56(d);
+ 	}
++
++	// MNM patch: DSP56300 arithmetic saturation mode (SR bit SM): after a data-ALU operation the 56-bit
++	// result is limited to the 48-bit range when bits 55, 48 and 47 are not all equal. Same logic as the
++	// aarch64 version (jitops_alu_aarch64.cpp).
++	void JitOps::alu_saturateSM(const JitRegGP& _alu)
++	{
++		const JitDspMode* mode = m_block.getMode();
++		if(mode && !mode->testSR(SRB_SM))
++			return;
++
++		const auto skip = m_asm.newLabel();
++		if(!mode)
++		{
++			m_asm.bitTest(m_dspRegs.getSR(JitDspRegs::Read), SRB_SM);
++			m_asm.jz(skip);
++		}
++
++		const auto d = r64(_alu);
++		const RegGP t(m_block);
++		const RegGP t2(m_block);
++		m_asm.mov(r64(t), d);
++		m_asm.shl(r64(t), asmjit::Imm(8));
++		m_asm.sar(r64(t), asmjit::Imm(8));                       // sign-extend 56 -> 64
++		m_asm.mov(r64(t2), r64(t));
++		m_asm.sar(r64(t2), asmjit::Imm(47));                     // 0 or -1 when within the 48-bit range
++		m_asm.add(r64(t2), asmjit::Imm(1));
++		m_asm.cmp(r64(t2), asmjit::Imm(1));
++		m_asm.jbe(skip);                                         // unsigned <= 1: in range, nothing to do
++		m_asm.mov(r64(t2), asmjit::Imm(0x007fffffffffffULL));
++		m_asm.mov(d, asmjit::Imm(0xff800000000000ULL));
++		m_asm.test(r64(t), r64(t));
++		m_asm.cmovge(d, r64(t2));                                // positive -> upper limit, negative -> lower limit
++		m_asm.bind(skip);
++	}
+ }
+ 
+ #endif
