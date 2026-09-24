@@ -1,5 +1,5 @@
 diff --git a/source/dsp56kEmu/dsp_ops.inl b/source/dsp56kEmu/dsp_ops.inl
-index 566ff16..7e0debe 100644
+index 566ff163..7e0debe5 100644
 --- a/source/dsp56kEmu/dsp_ops.inl
 +++ b/source/dsp56kEmu/dsp_ops.inl
 @@ -427,7 +427,8 @@ namespace dsp56k
@@ -13,7 +13,7 @@ index 566ff16..7e0debe 100644
  	inline void DSP::op_Pflushun(const TWord op)
  	{
 diff --git a/source/dsp56kEmu/dsp_ops_alu.inl b/source/dsp56kEmu/dsp_ops_alu.inl
-index 386e30f..9fd92c5 100644
+index 386e30f3..9fd92c58 100644
 --- a/source/dsp56kEmu/dsp_ops_alu.inl
 +++ b/source/dsp56kEmu/dsp_ops_alu.inl
 @@ -72,6 +72,7 @@ namespace dsp56k
@@ -124,7 +124,7 @@ index 386e30f..9fd92c5 100644
  		//sr_l_update_by_v();
  		sr_c_update_arithmetic(old, d);
 diff --git a/source/dsp56kEmu/jit.cpp b/source/dsp56kEmu/jit.cpp
-index c885490..f9b0d79 100644
+index c8854905..f9b0d79f 100644
 --- a/source/dsp56kEmu/jit.cpp
 +++ b/source/dsp56kEmu/jit.cpp
 @@ -269,6 +269,7 @@ namespace dsp56k
@@ -136,10 +136,18 @@ index c885490..f9b0d79 100644
  	}
  
 diff --git a/source/dsp56kEmu/jit.h b/source/dsp56kEmu/jit.h
-index 0752c28..fad1c55 100644
+index 0752c28e..f963bf5c 100644
 --- a/source/dsp56kEmu/jit.h
 +++ b/source/dsp56kEmu/jit.h
-@@ -74,6 +74,13 @@ namespace dsp56k
+@@ -5,6 +5,7 @@
+ #include "types.h"
+ 
+ #include <set>
++#include <string>   // MNM patch: std::string failReason (MSVC does not get it through the other headers)
+ #include <vector>
+ #include <unordered_map>
+ 
+@@ -74,6 +75,13 @@ namespace dsp56k
  			return m_volatileP.find(_pc) != m_volatileP.end();
  		}
  
@@ -153,7 +161,7 @@ index 0752c28..fad1c55 100644
  		void create(TWord _pc, bool _execute);
  		void recreate(TWord _pc);
  
-@@ -132,5 +139,7 @@ namespace dsp56k
+@@ -132,5 +140,7 @@ namespace dsp56k
  		// the following data is accessed by JIT code at runtime, it NEEDS to be put last into this struct to be
  		// able to use ARM relative addressing, see member ordering in dsp.h
  		JitRuntimeData m_runtimeData;
@@ -162,7 +170,7 @@ index 0752c28..fad1c55 100644
  	};
  }
 diff --git a/source/dsp56kEmu/jitblock.cpp b/source/dsp56kEmu/jitblock.cpp
-index ff2af91..a16f69e 100644
+index ff2af915..a16f69e0 100644
 --- a/source/dsp56kEmu/jitblock.cpp
 +++ b/source/dsp56kEmu/jitblock.cpp
 @@ -1,3 +1,4 @@
@@ -189,7 +197,7 @@ index ff2af91..a16f69e 100644
  
  		dspAsm.clear();
 diff --git a/source/dsp56kEmu/jitblockchain.cpp b/source/dsp56kEmu/jitblockchain.cpp
-index 5089152..031b754 100644
+index 50891522..031b7540 100644
 --- a/source/dsp56kEmu/jitblockchain.cpp
 +++ b/source/dsp56kEmu/jitblockchain.cpp
 @@ -1,4 +1,6 @@
@@ -260,7 +268,7 @@ index 5089152..031b754 100644
  			return nullptr;
  		}
 diff --git a/source/dsp56kEmu/jitblockchain.h b/source/dsp56kEmu/jitblockchain.h
-index fd75014..3dc842a 100644
+index fd75014d..3dc842ae 100644
 --- a/source/dsp56kEmu/jitblockchain.h
 +++ b/source/dsp56kEmu/jitblockchain.h
 @@ -119,5 +119,6 @@ namespace dsp56k
@@ -271,7 +279,7 @@ index fd75014..3dc842a 100644
  	};
  }
 diff --git a/source/dsp56kEmu/jitconfig.h b/source/dsp56kEmu/jitconfig.h
-index ed83621..ad4999a 100644
+index ed83621a..ad4999af 100644
 --- a/source/dsp56kEmu/jitconfig.h
 +++ b/source/dsp56kEmu/jitconfig.h
 @@ -29,6 +29,11 @@ namespace dsp56k
@@ -286,8 +294,65 @@ index ed83621..ad4999a 100644
  		// asmjit can validate the generate code, usually not needed
  		bool asmjitDiagnostics = false;
  
+diff --git a/source/dsp56kEmu/jitdspregpool.cpp b/source/dsp56kEmu/jitdspregpool.cpp
+index 23d905fe..c92546a8 100644
+--- a/source/dsp56kEmu/jitdspregpool.cpp
++++ b/source/dsp56kEmu/jitdspregpool.cpp
+@@ -380,6 +380,15 @@ namespace dsp56k
+ 		return true;
+ 	}
+ 
++	// MNM patch: remove a recorded GP->XMM spill move whose value is about to be overwritten before being read back
++	void JitDspRegPool::dropDeadSpillMove(const PoolReg _reg)
++	{
++		auto& sm = m_moveToXmmInstruction[_reg];
++		if(sm.isValid())
++			m_block.asm_().removeNode(sm.spillMoveOp);
++		sm.reset();
++	}
++
+ 	void JitDspRegPool::setIsParallelOp(const bool _isParallelOp)
+ 	{
+ 		m_isParallelOp = _isParallelOp;
+@@ -400,7 +409,13 @@ namespace dsp56k
+ 			if(m_gpList.get(gpDst, _dst))
+ 				m_block.asm_().mov(gpDst, gpSrc);
+ 			else if(m_xmList.get(xmDst, _dst))
++			{
++				// MNM patch: if _dst was spilled to this XMM and never read back since, that earlier spill move is dead
++				// (overwritten right here). Drop it, otherwise it survives as an orphan write to the XMM with no record
++				// that would mark the register as used, i.e. it is never saved/restored (clobbers callee-saved XMMs on Win64).
++				dropDeadSpillMove(_dst);
+ 				spillMove(_dst, xmDst, gpSrc);
++			}
+ 			else
+ 				return false;
+ 			return true;
+@@ -419,7 +434,10 @@ namespace dsp56k
+ 			}
+ 			else if(m_xmList.get(xmDst, _dst))
+ 			{
++				dropDeadSpillMove(_dst);   // MNM patch: see above
+ 				spillMove(xmDst, xmSrc);
++				// MNM patch: the source XMM has been read now, its spill move must not be eliminated on release
++				m_moveToXmmInstruction[_src].reset();
+ 			}
+ 			else
+ 				return false;
+diff --git a/source/dsp56kEmu/jitdspregpool.h b/source/dsp56kEmu/jitdspregpool.h
+index e451024b..8eb4a33a 100644
+--- a/source/dsp56kEmu/jitdspregpool.h
++++ b/source/dsp56kEmu/jitdspregpool.h
+@@ -193,6 +193,7 @@ namespace dsp56k
+ 
+ 		bool canMakeSpace(PoolReg _reg, PoolReg _excludeReg) const;
+ 		bool canMakeSpace(PoolReg _excludeReg = PoolReg::DspCount) const;
++		void dropDeadSpillMove(PoolReg _reg);   // MNM patch
+ 
+ 	private:
+ 		JitRegPoolRegPair& getPair(const bool _y)
 diff --git a/source/dsp56kEmu/jitops.h b/source/dsp56kEmu/jitops.h
-index 0be2c03..e8a44fb 100644
+index 0be2c03f..e8a44fb5 100644
 --- a/source/dsp56kEmu/jitops.h
 +++ b/source/dsp56kEmu/jitops.h
 @@ -240,7 +240,7 @@ namespace dsp56k
@@ -317,7 +382,7 @@ index 0be2c03..e8a44fb 100644
  		void alu_rnd(TWord ab, const JitReg64& d, bool _needsSignextend = true);
  		void alu_insert(TWord ab, const DspValue& _src, DspValue& _widthOffset);
 diff --git a/source/dsp56kEmu/jitops_alu.cpp b/source/dsp56kEmu/jitops_alu.cpp
-index f9f8180..31f865d 100644
+index f9f81809..31f865d8 100644
 --- a/source/dsp56kEmu/jitops_alu.cpp
 +++ b/source/dsp56kEmu/jitops_alu.cpp
 @@ -49,6 +49,7 @@ namespace dsp56k
@@ -385,7 +450,7 @@ index f9f8180..31f865d 100644
  	{
  		const bool	ab = getFieldValue<Maci_xxxx, Field_d>(op);
 diff --git a/source/dsp56kEmu/jitops_alu_aarch64.cpp b/source/dsp56kEmu/jitops_alu_aarch64.cpp
-index fa8c64e..4d2e986 100644
+index fa8c64e6..4d2e9864 100644
 --- a/source/dsp56kEmu/jitops_alu_aarch64.cpp
 +++ b/source/dsp56kEmu/jitops_alu_aarch64.cpp
 @@ -641,6 +641,32 @@ namespace dsp56k
@@ -422,7 +487,7 @@ index fa8c64e..4d2e986 100644
  
  #endif
 diff --git a/source/dsp56kEmu/jitops_alu_x64.cpp b/source/dsp56kEmu/jitops_alu_x64.cpp
-index 293486a..74c7208 100644
+index 293486a7..74c72082 100644
 --- a/source/dsp56kEmu/jitops_alu_x64.cpp
 +++ b/source/dsp56kEmu/jitops_alu_x64.cpp
 @@ -665,6 +665,40 @@ namespace dsp56k
@@ -466,3 +531,71 @@ index 293486a..74c7208 100644
  }
  
  #endif
+diff --git a/source/dsp56kEmu/jitstackhelper.cpp b/source/dsp56kEmu/jitstackhelper.cpp
+index 932eae49..f46554cc 100644
+--- a/source/dsp56kEmu/jitstackhelper.cpp
++++ b/source/dsp56kEmu/jitstackhelper.cpp
+@@ -28,6 +28,27 @@ namespace dsp56k
+ 	constexpr size_t g_shadowSpaceSize = 0;
+ #endif
+ 
++	// MNM patch: on x64 the Win64 ABI treats XMM6-XMM15 as callee-saved in full 128 bits, so vector registers are
++	// saved/restored with 128-bit moves (movq would zero the upper half). pushSize() already reserves 16 bytes per
++	// vector register. ARM64 only preserves the low 64 bits of v8-v15, the 64-bit str/ldr there is correct.
++	static void saveVec(JitEmitter& _e, const JitReg128& _reg, const int32_t _offset)
++	{
++#ifdef HAVE_ARM64
++		_e.movq(ptr(g_stackReg, _offset), _reg);
++#else
++		_e.movdqu(asmjit::x86::xmmword_ptr(asmjit::x86::rsp, _offset), _reg);
++#endif
++	}
++
++	static void restoreVec(JitEmitter& _e, const JitReg128& _reg, const int32_t _offset)
++	{
++#ifdef HAVE_ARM64
++		_e.movq(_reg, ptr(g_stackReg, _offset));
++#else
++		_e.movdqu(_reg, asmjit::x86::xmmword_ptr(asmjit::x86::rsp, _offset));
++#endif
++	}
++
+ 	JitStackHelper::JitStackHelper(JitBlock& _block) : m_block(_block)
+ 	{
+ 		m_pushedRegs.reserve(32);
+@@ -55,7 +76,7 @@ namespace dsp56k
+ 	{
+ 		PushedReg reg;
+ 		stackRegSub(pushSize(_reg));
+-		m_block.asm_().movq(ptr(g_stackReg), _reg);
++		saveVec(m_block.asm_(), _reg, 0);   // MNM patch
+ 		reg.reg = _reg;
+ 
+ 		m_pushedBytes += pushSize(_reg);
+@@ -83,7 +104,7 @@ namespace dsp56k
+ 		m_pushedRegs.pop_back();
+ 		m_pushedBytes -= pushSize(_reg);
+ 
+-		m_block.asm_().movq(_reg, ptr(g_stackReg));
++		restoreVec(m_block.asm_(), _reg, 0);   // MNM patch
+ 		stackRegAdd(pushSize(_reg));
+ 	}
+ 
+@@ -130,7 +151,7 @@ namespace dsp56k
+ 
+ 				if(r.reg.isVec())
+ 				{
+-					m_block.asm_().movq(r.reg.as<JitReg128>(), memPtr);
++					restoreVec(m_block.asm_(), r.reg.as<JitReg128>(), offset);   // MNM patch
+ 				}
+ 				else
+ 				{
+@@ -204,7 +225,7 @@ namespace dsp56k
+ 				offset += static_cast<int32_t>(size);
+ 				if(reg.isVec())
+ 				{
+-					m_block.asm_().movq(memPtr, reg.as<JitReg128>());
++					saveVec(m_block.asm_(), reg.as<JitReg128>(), static_cast<int32_t>(offset - size));   // MNM patch (offset was advanced above)
+ 				}
+ 				else
+ 				{

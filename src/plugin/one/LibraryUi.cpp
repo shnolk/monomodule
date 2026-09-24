@@ -18,8 +18,10 @@ juce::File libraryAppFile()
     const juce::Array<F> candidates{F("/Applications/Monomodule Library.app"),
                                     F::getSpecialLocation(F::userHomeDirectory).getChildFile("Applications/Monomodule Library.app")};
 #elif JUCE_WINDOWS
-    const juce::Array<F> candidates{F::getSpecialLocation(F::globalApplicationsDirectory).getChildFile("Monomodule/Monomodule Library.exe"),
-                                    F::getSpecialLocation(F::globalApplicationsDirectoryX86).getChildFile("Monomodule/Monomodule Library.exe")};
+    // the Windows installer: Program Files, or %LOCALAPPDATA%\Programs for "Install for me only"
+    const juce::Array<F> candidates{F::getSpecialLocation(F::globalApplicationsDirectory).getChildFile("Shnolk/Monomodule/Monomodule Library.exe"),
+                                    F::getSpecialLocation(F::userApplicationDataDirectory).getParentDirectory()
+                                        .getChildFile("Local/Programs/Shnolk/Monomodule/Monomodule Library.exe")};
 #else
     const juce::Array<F> candidates{F::getSpecialLocation(F::userHomeDirectory).getChildFile(".local/bin/Monomodule Library"),
                                     F("/usr/local/bin/Monomodule Library"), F("/usr/bin/Monomodule Library")};

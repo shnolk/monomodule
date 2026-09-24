@@ -13,11 +13,13 @@ if(MNM_DSP56300_DIR)
   set(_dsp_src "${MNM_DSP56300_DIR}")
 else()
   include(FetchContent)
+  set(_dsp_patch "${CMAKE_SOURCE_DIR}/ext/patches/0001-dsp56300-mnm.patch")
+  file(SHA256 "${_dsp_patch}" _dsp_patch_hash)   # part of the patch command: a changed patch re-patches the checkout
   FetchContent_Declare(dsp56300
     GIT_REPOSITORY https://github.com/dsp56300/dsp56300.git
     GIT_TAG        ${MNM_DSP56300_COMMIT}
     GIT_SUBMODULES source/asmjit
-    PATCH_COMMAND  ${CMAKE_COMMAND} -DPATCH=${CMAKE_SOURCE_DIR}/ext/patches/0001-dsp56300-mnm.patch -P ${CMAKE_SOURCE_DIR}/cmake/apply_patch.cmake
+    PATCH_COMMAND  ${CMAKE_COMMAND} -DPATCH=${_dsp_patch} -DPATCH_HASH=${_dsp_patch_hash} -P ${CMAKE_SOURCE_DIR}/cmake/apply_patch.cmake
     SOURCE_SUBDIR  _no_top_level_project)   # populate only; the libraries are added below
   FetchContent_MakeAvailable(dsp56300)
   set(_dsp_src "${dsp56300_SOURCE_DIR}")
@@ -33,6 +35,10 @@ add_subdirectory("${_dsp_src}/source/asmjit"     "${CMAKE_BINARY_DIR}/dsp56300/a
 add_subdirectory("${_dsp_src}/source/dsp56kBase" "${CMAKE_BINARY_DIR}/dsp56300/dsp56kBase" EXCLUDE_FROM_ALL)
 add_subdirectory("${_dsp_src}/source/dsp56kEmu"  "${CMAKE_BINARY_DIR}/dsp56300/dsp56kEmu"  EXCLUDE_FROM_ALL)
 set(_dsp_libs asmjit dsp56kBase dsp56kEmu)
+if(MNM_BUILD_TESTS)   # the emulator's own interpreter/JIT opcode tests (patched); registered in tests/
+  add_subdirectory("${_dsp_src}/source/dsp56kTestRunner" "${CMAKE_BINARY_DIR}/dsp56300/dsp56kTestRunner")
+  list(APPEND _dsp_libs dsp56kTestRunner)
+endif()
 if(WIN32 OR (UNIX AND NOT APPLE))   # dsp56kEmu links Intel's JIT profiling API there, as dsp56300's own build does
   add_subdirectory("${_dsp_src}/source/vtuneSdk" "${CMAKE_BINARY_DIR}/dsp56300/vtuneSdk" EXCLUDE_FROM_ALL)
   list(APPEND _dsp_libs vtuneSdk)
@@ -40,7 +46,9 @@ endif()
 foreach(t ${_dsp_libs})
   set_target_properties(${t} PROPERTIES POSITION_INDEPENDENT_CODE ON)
   if(MSVC)
-    target_compile_options(${t} PRIVATE /W0)   # third-party warnings
+    # as dsp56300's own build: conformance mode (without it MSVC finds DSP::writeMem ambiguous), room for its
+    # large compile-time tables, third-party warnings off
+    target_compile_options(${t} PRIVATE /w /permissive- /constexpr:steps10000000)
   else()
     target_compile_options(${t} PRIVATE -w)
   endif()

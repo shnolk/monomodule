@@ -40,7 +40,7 @@ Pre-built downloads for macOS, Windows and Linux are on the project's **Releases
 | Platform | Plugins | Library app |
 |---|---|---|
 | macOS 12+ (Apple Silicon and Intel) | Run the installer. It installs the AU and VST3 plugins in `/Library/Audio/Plug-Ins/`. | `/Applications/Monomodule Library.app` |
-| Windows 10+ (x64) | Copy the `.vst3` folders to `C:\Program Files\Common Files\VST3\` | `C:\Program Files\Monomodule\Monomodule Library.exe` |
+| Windows 10+ (x64) | Run the installer. It installs the VST3 plugins in `C:\Program Files\Common Files\VST3\`. Or use the zip and copy the `.vst3` folders there yourself. | `C:\Program Files\Shnolk\Monomodule\Monomodule Library.exe` |
 | Linux (x64) | Copy the `.vst3` folders to `~/.vst3/` | `~/.local/bin/Monomodule Library` |
 
 The plugin's library panel opens the Library app from these locations.

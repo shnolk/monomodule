@@ -13,3 +13,5 @@ add_executable(mnm-tests
 target_link_libraries(mnm-tests PRIVATE mnmcore)
 target_include_directories(mnm-tests PRIVATE ${CMAKE_SOURCE_DIR}/src/plugin/one)
 add_test(NAME mnm-tests COMMAND mnm-tests)
+# the dsp56300 emulator's own interpreter/JIT opcode tests, run against the patched emulator (no OS file needed)
+add_test(NAME dsp56300-opcodes COMMAND dsp56kTestRunner)

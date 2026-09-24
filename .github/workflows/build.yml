@@ -1,6 +1,6 @@
 # Builds and tests Monomodule on macOS, Linux and Windows. On a version tag (v1.2.3) it also creates a draft
-# GitHub release with the Linux and Windows downloads attached; the macOS installer is signed and notarized
-# separately and added to the draft by hand before it is published.
+# GitHub release with the Linux and Windows zips attached; the macOS and Windows installers are built separately
+# and added to the draft by hand before it is published.
 name: build
 
 on:
@@ -24,7 +24,7 @@ jobs:
           - { os: windows-2022, platform: windows, generator: 'Visual Studio 17 2022', extra: '-A x64' }
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Linux dependencies
         if: matrix.platform == 'linux'
@@ -52,7 +52,7 @@ jobs:
         shell: bash
         run: cmake -DBUILD_DIR=build -DOUT_DIR=dist -DPLATFORM=${{ matrix.platform }} -P cmake/stage_release.cmake
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: monomodule-${{ matrix.platform }}
           path: dist/*.zip
@@ -64,11 +64,11 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           draft: true
           files: |
